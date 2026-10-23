@@ -1,0 +1,45 @@
+======================================================================
+RESUMEN DEL DATASET IRIS TRANSFORMADO
+======================================================================
+
+Cantidad de filas:    128
+Cantidad de columnas: 6
+
+COLUMNAS Y TIPOS DE DATO
+----------------------------------------------------------------------
+  sepal_length         float64
+  sepal_width          float64
+  petal_length         float64
+  petal_width          float64
+  species              str
+  petal_area           float64
+
+VALORES NULOS POR COLUMNA
+----------------------------------------------------------------------
+  sepal_length         0
+  sepal_width          0
+  petal_length         0
+  petal_width          0
+  species              0
+  petal_area           0
+
+ESTADÍSTICAS DESCRIPTIVAS (columnas numéricas)
+----------------------------------------------------------------------
+       sepal_length  sepal_width  petal_length  petal_width  petal_area
+count       128.000      128.000       128.000      128.000     128.000
+mean          6.041        3.054         4.122        1.354       6.661
+std           0.727        0.452         1.627        0.704       4.519
+min           5.000        2.000         1.200        0.100       0.150
+25%           5.500        2.800         3.450        1.000       3.450
+50%           6.000        3.000         4.500        1.400       6.650
+75%           6.500        3.325         5.225        1.900      10.072
+max           7.900        4.400         6.900        2.500      15.870
+
+FRECUENCIA DE VALORES: species
+----------------------------------------------------------------------
+species
+Iris-versicolor    49
+Iris-virginica     49
+Iris-setosa        30
+
+======================================================================
