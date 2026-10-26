@@ -1,0 +1,161 @@
+==============================================================================
+S30 - EA2 UNIDAD 1 - MODELOS DE PREDICCIÓN Y CLASIFICACIÓN
+Resumen generado automáticamente por código
+==============================================================================
+Fecha de ejecución: 2026-10-25 22:05:32 (UTC-0500)
+Entorno: Python 3.12.10 | pandas 3.1.0 | scikit-learn 1.9.1 | datasets 5.1.0
+
+==============================================================================
+1. DATASET
+==============================================================================
+Identificador: scikit-learn/iris
+Enlace:        https://huggingface.co/datasets/scikit-learn/iris
+Split:         train (único split disponible)
+Obtención:     automática con datasets.load_dataset() -> pandas
+Tamaño original: 150 filas x 6 columnas
+Columnas originales: ['Id', 'SepalLengthCm', 'SepalWidthCm', 'PetalLengthCm', 'PetalWidthCm', 'Species']
+Tamaño limpio:   147 filas x 5 columnas
+Columnas limpias:    ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species']
+
+==============================================================================
+2. PREPROCESAMIENTO
+==============================================================================
+Operaciones sobre el DataFrame completo (no aprenden de los datos):
+  1. Renombrar columnas
+     Motivo: Nombres en snake_case, sin la unidad 'Cm'.
+     Efecto: ['Id', 'SepalLengthCm', 'SepalWidthCm', 'PetalLengthCm', 'PetalWidthCm', 'Species'] -> ['id', 'sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species']
+  2. Eliminar columnas
+     Motivo: 'id' solo numera las filas y el archivo está ordenado por especie, así que delataría la clase.
+     Efecto: Columnas eliminadas: ['id']; quedan 5.
+  3. Normalizar etiquetas y corregir tipo
+     Motivo: El prefijo 'Iris-' es redundante y la especie es categórica.
+     Efecto: ['Iris-setosa', 'Iris-versicolor', 'Iris-virginica'] -> ['setosa', 'versicolor', 'virginica'] (tipo 'category').
+  4. Revisar valores nulos
+     Motivo: scikit-learn no acepta valores faltantes.
+     Efecto: Nulos encontrados: 0; filas eliminadas: 0.
+  5. Eliminar filas duplicadas
+     Motivo: Una fila repetida en train y test a la vez infla las métricas.
+     Efecto: Duplicados encontrados: 3; filas: 150 -> 147.
+Operaciones dentro de cada Pipeline (ajustadas SOLO con entrenamiento):
+  - StandardScaler: centra en 0 y escala a desviación 1 las variables numéricas.
+  - OneHotEncoder(drop='first') (solo regresión): convierte 'species' en variables 0/1.
+División entrenamiento/prueba: test_size=0.3, random_state=42, estratificada por especie.
+
+==============================================================================
+3. MODELO DE REGRESIÓN LINEAL
+==============================================================================
+Objetivo: estimar el largo del pétalo (cm) a partir de las demás medidas de la flor y su especie.
+Variable objetivo:      petal_length
+Variables predictoras:  ['sepal_length', 'sepal_width', 'petal_width', 'species']
+Algoritmo: sklearn.linear_model.LinearRegression (mínimos cuadrados ordinarios)
+Parámetros (todos predeterminados de scikit-learn):
+    copy_X = True
+    fit_intercept = True
+    n_jobs = None
+    positive = False
+    tol = 1e-06
+Entrenamiento / prueba: 102 / 45 filas
+
+Métricas en prueba:
+    MAE  = 0.2199 cm
+    RMSE = 0.2921 cm
+    R²   = 0.9705
+    MAE modelo base (media) = 1.5159 cm
+    R² validación cruzada (5 pliegues) = 0.9748 ± 0.0131
+
+Coeficientes:
+          variable  coef_estandarizado  coef_por_cm
+      sepal_length              0.5574       0.6385
+       sepal_width             -0.0840      -0.1856
+       petal_width              0.4953       0.6429
+species_versicolor              1.3461       1.3461
+ species_virginica              1.8114       1.8114
+
+Interpretación:
+  - R² = 0.970: el modelo explica el 97.0% de la variabilidad de petal_length en los datos de prueba.
+  - MAE = 0.220 cm: en promedio la predicción se aleja 0.22 cm del valor real (5.9% del valor medio, 3.70 cm).
+  - RMSE = 0.292 cm (1.33 veces el MAE): algunos errores grandes pesan más que el resto.
+  - Referencia: un modelo que siempre predice la media tendría MAE = 1.516 cm; la regresión reduce el error en 85.5%.
+  - Validación cruzada (5 pliegues sobre entrenamiento): R² = 0.975 ± 0.013; el desempeño es estable entre particiones.
+  - Coeficiente sepal_length: +0.639 cm de petal_length por cada cm adicional (+0.557 cm por desviación estándar), con las demás variables constantes.
+  - Coeficiente sepal_width: -0.186 cm de petal_length por cada cm adicional (-0.084 cm por desviación estándar), con las demás variables constantes.
+  - Coeficiente petal_width: +0.643 cm de petal_length por cada cm adicional (+0.495 cm por desviación estándar), con las demás variables constantes.
+  - Coeficiente species_versicolor: una flor versicolor tiene en promedio +1.346 cm de petal_length frente a una setosa con las mismas medidas.
+  - Coeficiente species_virginica: una flor virginica tiene en promedio +1.811 cm de petal_length frente a una setosa con las mismas medidas.
+  - Entre las medidas numéricas, la de mayor peso (|coef. estandarizado|) es sepal_length. Los coeficientes de especie (0/1) no son comparables en esa escala, pero muestran que la especie explica buena parte del largo del pétalo.
+  - Intercepto (escala estandarizada) = 2.751 cm: petal_length estimado para una flor setosa con medidas iguales a la media de entrenamiento.
+  - Intercepto en unidades originales = -1.221 cm (flor setosa con todas las medidas en 0 cm): no tiene sentido físico, solo ubica el plano de regresión.
+
+==============================================================================
+4. MODELO DE CLASIFICACIÓN
+==============================================================================
+Objetivo: identificar la especie de una flor a partir de sus cuatro medidas.
+Variable objetivo:      species  (clases: ['setosa', 'versicolor', 'virginica'])
+Variables predictoras:  ['sepal_length', 'sepal_width', 'petal_length', 'petal_width']
+Algoritmo: sklearn.linear_model.LogisticRegression (multinomial). Modelo lineal, interpretable y adecuado para pocas variables numéricas y clases casi separables.
+Hiperparámetros (max_iter y random_state fijados; el resto predeterminados):
+    C = 1.0
+    class_weight = None
+    dual = False
+    fit_intercept = True
+    intercept_scaling = 1
+    l1_ratio = 0.0
+    max_iter = 1000
+    n_jobs = None
+    penalty = deprecated
+    random_state = 42
+    solver = lbfgs
+    tol = 0.0001
+    verbose = 0
+    warm_start = False
+    Nota: en scikit-learn >= 1.8 'penalty' figura como 'deprecated'; la regularización la define l1_ratio = 0.0, es decir, L2 con fuerza 1/C.
+Entrenamiento / prueba: 102 / 45 filas
+Distribución de clases: setosa=48, versicolor=50, virginica=49. Las clases están balanceadas, así que la exactitud es representativa; además se reportan precisión, recall y F1 macro, que dan el mismo peso a cada clase.
+
+Métricas en prueba:
+    Exactitud        = 0.9111
+    Precisión macro  = 0.9155
+    Recall macro     = 0.9111
+    F1 macro         = 0.9107
+
+Matriz de confusión (filas = clase real, columnas = predicción):
+                 pred_setosa  pred_versicolor  pred_virginica
+real_setosa               15                0               0
+real_versicolor            0               14               1
+real_virginica             0                3              12
+
+Reporte por clase:
+              precision    recall  f1-score   support
+
+      setosa      1.000     1.000     1.000        15
+  versicolor      0.824     0.933     0.875        15
+   virginica      0.923     0.800     0.857        15
+
+    accuracy                          0.911        45
+   macro avg      0.916     0.911     0.911        45
+weighted avg      0.916     0.911     0.911        45
+
+Interpretación:
+  - Exactitud = 0.911: 41 de 45 flores de prueba se clasificaron correctamente.
+  - Precisión macro = 0.916, recall macro = 0.911, F1 macro = 0.911.
+  - Clase(s) mejor reconocida(s): setosa (F1 = 1.000).
+  - Clase(s) con menor F1: virginica (F1 = 0.857).
+  - Errores de la matriz de confusión: 1 flor(es) versicolor clasificada(s) como virginica; 3 flor(es) virginica clasificada(s) como versicolor.
+  - Validación cruzada estratificada (5 pliegues sobre entrenamiento): exactitud = 0.980 ± 0.040.
+  - Para la clase setosa, la variable más influyente es petal_length (coef. -1.698 sobre datos estandarizados).
+  - Para la clase versicolor, la variable más influyente es petal_width (coef. -0.802 sobre datos estandarizados).
+  - Para la clase virginica, la variable más influyente es petal_width (coef. +2.363 sobre datos estandarizados).
+
+==============================================================================
+5. CONCLUSIONES Y LIMITACIONES
+==============================================================================
+  - La regresión lineal estima petal_length con un error medio de 0.22 cm (R² = 0.970).
+  - El clasificador identifica la especie con exactitud de 0.911 y F1 macro de 0.911.
+  - Dataset pequeño (147 flores; 45 en prueba): cada error en prueba cambia la exactitud en 2.2 puntos. Por eso se reporta también validación cruzada.
+  - Las medidas están muy correlacionadas entre sí y con la especie (multicolinealidad): los coeficientes individuales de la regresión deben leerse con cautela y no implican causalidad.
+  - La regresión usa la especie como predictora, así que requiere conocerla de antemano.
+  - La regresión supone relaciones lineales; no captura curvaturas ni interacciones entre variables.
+  - versicolor y virginica se solapan en sus medidas; es ahí donde el clasificador puede equivocarse.
+  - Iris es un conjunto limpio y bien separado; los resultados no se generalizan a otras especies o condiciones de medición.
+
+==============================================================================
