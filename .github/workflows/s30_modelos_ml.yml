@@ -1,0 +1,45 @@
+name: S30 - Modelos de prediccion y clasificacion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "S30_Unidad1_EA2_Modelos_de_Prediccion_y_Clasificacion/**"
+      - ".github/workflows/s30_modelos_ml.yml"
+  workflow_dispatch:
+
+env:
+  PROJECT_DIR: S30_Unidad1_EA2_Modelos_de_Prediccion_y_Clasificacion
+
+jobs:
+  entrenar-y-evaluar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+
+    steps:
+      - name: Descargar el código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ${{ env.PROJECT_DIR }}/requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ejecutar flujo completo (Hugging Face -> modelos -> resumen .txt)
+        run: python main.py
+
+      - name: Publicar el resumen como artefacto descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumen-modelos
+          path: ${{ env.PROJECT_DIR }}/output/resumen_modelos.txt
+          if-no-files-found: error
