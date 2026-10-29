@@ -1,8 +1,10 @@
-"""Modelo de clasificación con regresión logística."""
+"""Modelo de clasificación de texto con regresión logística."""
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, classification_report,
                              confusion_matrix, f1_score, precision_score,
@@ -12,16 +14,28 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 
-class LogisticRegressionClassifier:
-    """Regresión logística multiclase con escalado dentro de un Pipeline."""
+class TextLogisticClassifier:
+    """Regresión logística sobre TF-IDF del texto más variables numéricas escaladas."""
 
-    def __init__(self, features: List[str], target: str,
-                 max_iter: int = 1000, random_state: Optional[int] = None) -> None:
-        self.features = features
+    def __init__(self, text_feature: str, numeric_features: List[str], target: str,
+                 ngram_range: Tuple[int, int] = (1, 2), min_df: int = 2,
+                 class_weight: Optional[str] = "balanced", max_iter: int = 1000,
+                 random_state: Optional[int] = None) -> None:
+        self.text_feature = text_feature
+        self.numeric_features = numeric_features
         self.target = target
+        self.features = [text_feature] + numeric_features
+
+        preprocessor = ColumnTransformer(
+            [("text", TfidfVectorizer(ngram_range=ngram_range, min_df=min_df,
+                                      sublinear_tf=True), text_feature),
+             ("num", StandardScaler(), numeric_features)],
+            verbose_feature_names_out=False,
+        )
         self.pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("model", LogisticRegression(max_iter=max_iter,
+            ("preprocess", preprocessor),
+            ("model", LogisticRegression(class_weight=class_weight,
+                                         max_iter=max_iter,
                                          random_state=random_state)),
         ])
 
@@ -29,7 +43,7 @@ class LogisticRegressionClassifier:
     def classes(self) -> List[str]:
         return [str(c) for c in self.pipeline.named_steps["model"].classes_]
 
-    def fit(self, X_train: pd.DataFrame, y_train: pd.Series) -> "LogisticRegressionClassifier":
+    def fit(self, X_train: pd.DataFrame, y_train: pd.Series) -> "TextLogisticClassifier":
         self.pipeline.fit(X_train[self.features], y_train.astype(str))
         return self
 
@@ -63,13 +77,20 @@ class LogisticRegressionClassifier:
                        folds: int, random_state: int) -> Dict[str, float]:
         cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=random_state)
         scores = cross_val_score(self.pipeline, X_train[self.features],
-                                 y_train.astype(str), cv=cv, scoring="accuracy")
-        return {"accuracy_mean": float(scores.mean()),
-                "accuracy_std": float(scores.std())}
+                                 y_train.astype(str), cv=cv, scoring="f1_macro")
+        return {"f1_macro_mean": float(scores.mean()),
+                "f1_macro_std": float(scores.std())}
 
-    def coefficients(self) -> pd.DataFrame:
+    def vocabulary_size(self) -> int:
+        text = self.pipeline.named_steps["preprocess"].named_transformers_["text"]
+        return len(text.vocabulary_)
+
+    def top_features(self, n: int = 8) -> Dict[str, List[str]]:
+        """Variables con mayor coeficiente positivo para cada clase."""
         model = self.pipeline.named_steps["model"]
-        return pd.DataFrame(model.coef_, index=self.classes, columns=self.features)
+        names = self.pipeline.named_steps["preprocess"].get_feature_names_out()
+        return {label: list(pd.Series(coefs, index=names).nlargest(n).index)
+                for label, coefs in zip(self.classes, model.coef_)}
 
     def params(self) -> Dict[str, object]:
         return self.pipeline.named_steps["model"].get_params()

@@ -20,18 +20,27 @@ Hugging Face → DataFrame → preprocesamiento
 
 | Campo | Valor |
 |---|---|
-| Identificador | `scikit-learn/iris` |
-| Enlace | https://huggingface.co/datasets/scikit-learn/iris |
-| Split / configuración | `train` (único split; sin configuraciones) |
-| Contenido | 150 flores de 3 especies de iris (*setosa*, *versicolor*, *virginica*), 50 de cada una |
-| Columnas | `Id`, `SepalLengthCm`, `SepalWidthCm`, `PetalLengthCm`, `PetalWidthCm`, `Species` |
+| Identificador | `manuelgscom/dale-bash-test-v2` |
+| Enlace | https://huggingface.co/datasets/manuelgscom/dale-bash-test-v2 |
+| Split / configuración | `test` (único split publicado; configuración `default`) |
+| Contenido | 471 peticiones en lenguaje natural (español 257 / inglés 214) a un asistente de terminal Linux |
+| Columnas | `id`, `lang`, `category`, `context`, `request`, `expected_type`, `reference_commands`, `notes` |
+
+Columnas relevantes:
+- `request`: texto de la petición.
+- `expected_type`: si el asistente debe responder con un comando (`command`), rechazar la petición (`refuse`) o pedir aclaración (`unsure`).
+- `context`: diccionario con distribución, gestor de paquetes y herramientas instaladas.
+- `reference_commands`: los comandos bash correctos.
 
 Se descarga con `datasets.load_dataset()` desde el código (`src/data_loader.py`). No hay
 archivos manuales.
 
-- **Regresión:** objetivo `petal_length`, que es numérico continuo.
-- **Clasificación:** objetivo `species`, que es categórico. Es una etiqueta original del dataset
-  y no se derivó de ninguna variable numérica.
+- **Clasificación:** objetivo `expected_type`, que es categórico y viene así en el dataset.
+- **Regresión:** el dataset no trae ninguna variable numérica continua. Se **construye**
+  `command_length`, la longitud en caracteres del comando de referencia, como medida de la
+  complejidad de la petición. Solo se usa como objetivo; `reference_commands` nunca entra como predictor.
+- **Fuga de información detectada:** `category` equivale a la clase (`fuera_de_ambito` siempre es
+  `refuse` y `ambigua` siempre es `unsure`), así que se excluye del clasificador.
 
 ## 🗂️ Estructura
 
@@ -41,9 +50,9 @@ S30_Unidad1_EA2_Modelos_de_Prediccion_y_Clasificacion/
 ├── src/
 │   ├── config.py                    # Dataset, semilla, test_size, variables de cada modelo
 │   ├── data_loader.py               # HFDatasetLoader: Hugging Face -> pandas.DataFrame
-│   ├── preprocessing.py             # DataPreprocessor (limpieza) y split_data
+│   ├── preprocessing.py             # DataPreprocessor (limpieza y enriquecimiento) y split_data
 │   ├── regression_model.py          # LinearRegressionModel (Pipeline + métricas + coeficientes)
-│   ├── classification_model.py      # LogisticRegressionClassifier (Pipeline + matriz + métricas)
+│   ├── classification_model.py      # TextLogisticClassifier (TF-IDF + regresión logística)
 │   ├── interpretation.py            # Interpretaciones en texto a partir de los resultados
 │   ├── pipeline.py                  # run_experiment(): orquesta todo el flujo
 │   └── report_writer.py             # ModelSummaryWriter: genera el resumen .txt
@@ -64,43 +73,60 @@ Las operaciones que **no aprenden de los datos** se aplican al DataFrame complet
 
 | Operación | Problema que resuelve | Efecto |
 |---|---|---|
-| Renombrar columnas | Nombres poco cómodos (`SepalLengthCm`) | snake_case: `sepal_length`, ... |
-| Eliminar `id` | Solo numera filas; el archivo está ordenado por especie, así que delataría la clase | 6 → 5 columnas |
-| Normalizar etiquetas y tipo | Prefijo `Iris-` redundante; la especie era texto | `setosa`, ... con tipo `category` |
-| Revisar nulos | scikit-learn no acepta faltantes | 0 nulos |
-| Eliminar duplicados | 3 flores repetidas podían quedar en train y test a la vez | 150 → 147 filas |
+| Expandir `context` | Es un diccionario anidado | Columnas `os`, `distro`, `pm`, `tools` |
+| Eliminar `id`, `os`, `notes` | `id` es un identificador, `os` es constante (`linux`) y `notes` anticipa la respuesta | Columnas sin ruido ni fuga |
+| Nulos y duplicados | Una petición repetida en train y test inflaría las métricas | 0 nulos, 0 duplicados |
+| Corregir tipos | `lang`, `category`, `distro`, `pm` y `expected_type` eran texto | Tipo `category` |
+| Enriquecer | El texto y las listas no son numéricos | `request_length`, `n_paths` (rutas citadas), `n_tools`, `command_length` |
+| Eliminar listas resumidas | `tools` y `reference_commands` no son utilizables | 471 filas × 10 columnas |
 
 Las operaciones que **sí aprenden de los datos** van dentro de un `Pipeline` de scikit-learn,
 de modo que se ajustan **solo con entrenamiento** y luego se aplican a prueba:
 
 - `StandardScaler` en las variables numéricas, para ambos modelos.
-- `OneHotEncoder(drop="first")` en `species`, solo en la regresión. `setosa` queda como referencia.
+- `OneHotEncoder(drop="first")` en `lang` y `category`, solo en la regresión.
+- `TfidfVectorizer` sobre `request`, solo en la clasificación. El vocabulario se aprende con train.
 
-Para ambos modelos la división es 70 % entrenamiento y 30 % prueba (102 / 45 filas), con
-`random_state=42` y estratificada por especie.
-El notebook demuestra que las medias del escalador son las de `X_train`.
+La división es 70 % entrenamiento y 30 % prueba con `random_state=42`. La regresión estratifica
+por `category` y la clasificación por `expected_type`.
+El notebook demuestra que las medias del escalador son las de `X_train` y que las palabras que
+solo aparecen en prueba se ignoran.
 
 ## 📈 Modelo 1: Regresión lineal
 
-- **Pregunta:** ¿se puede estimar el largo del pétalo a partir de las demás medidas y la especie?
-- **Objetivo:** `petal_length` (cm).
-- **Predictoras:** `sepal_length`, `sepal_width`, `petal_width` y `species`.
+- **Pregunta:** ¿se puede estimar qué tan largo (complejo) será el comando que resuelve una
+  petición a partir de rasgos de la propia petición?
+- **Datos:** las 339 peticiones `command` (237 para entrenamiento y 102 para prueba).
+- **Objetivo:** `command_length`, en caracteres.
+- **Predictoras:** `request_length`, `n_paths`, `n_tools`, `lang` y `category`.
 - **Algoritmo:** `LinearRegression`, con todos sus parámetros predeterminados.
-- **Métricas:** MAE, RMSE y R² en prueba, comparadas con un modelo base que predice la media, más
-  R² con validación cruzada de 5 pliegues.
-- **Interpretación:** los coeficientes se reportan por desviación estándar (escala del Pipeline) y
-  por cm; el intercepto, en ambas escalas.
+- **Resultados:** R² = 0.24 y MAE = 14.8 caracteres, frente a 17.2 de un modelo base que predice
+  siempre la media. Además se calcula el R² con validación cruzada de 5 pliegues.
+- **Interpretación:**
+  - Cada ruta mencionada añade unos 8 caracteres al comando.
+  - Cada carácter de la petición añade unos 0.26.
+  - La categoría `paquetes` produce comandos unos 12 caracteres más cortos.
+  - El R² es modesto porque la longitud depende de la sintaxis concreta de cada comando.
 
 ## 🎯 Modelo 2: Clasificación
 
-- **Qué se clasifica:** la especie de la flor (3 clases balanceadas).
-- **Predictoras:** las 4 medidas.
-- **Algoritmo:** `LogisticRegression` multinomial. Es lineal, interpretable y adecuado para pocas
-  variables numéricas y clases casi separables.
-- **Hiperparámetros:** `max_iter=1000` y `random_state=42`; el resto son predeterminados
-  (`C=1.0`, `solver="lbfgs"`, L2).
-- **Métricas:** matriz de confusión, exactitud, y precisión, recall y F1 macro, además de
-  validación cruzada estratificada de 5 pliegues.
+- **Qué se clasifica:** `expected_type`, con las clases `command` (72 %), `refuse` (21 %) y `unsure` (7 %).
+- **Predictoras:** el texto `request` (TF-IDF de palabras y bigramas), más `request_length` y `n_paths`.
+  Se excluyen `category`, `reference_commands` y `command_length` por fuga de información.
+- **Algoritmo:** TF-IDF más `LogisticRegression`. Es lineal, rápido, adecuado para textos cortos
+  con pocos datos, e interpretable, porque cada término tiene un peso por clase.
+- **Hiperparámetros:**
+  - `class_weight="balanced"`: las clases están desbalanceadas; sin balanceo, el F1 macro cae de
+    0.70 a 0.42 y el modelo nunca predice `unsure`.
+  - `max_iter=1000` y `random_state=42`.
+  - El resto son predeterminados: `C=1.0`, `solver="lbfgs"`, L2.
+  - TF-IDF: `ngram_range=(1, 2)`, `min_df=2`, `sublinear_tf=True`.
+- **Métricas:** matriz de confusión, recall y F1 por clase y F1 macro. Se prioriza el F1 macro
+  porque la exactitud premia a la clase mayoritaria. También hay validación cruzada estratificada.
+- **Resultados:**
+  - F1 macro = 0.70 y exactitud = 0.82.
+  - `command` se reconoce mejor (F1 = 0.90).
+  - `unsure` es la clase más difícil (F1 = 0.44, con solo 9 casos en prueba).
 
 Los resultados numéricos y su interpretación están en el notebook y en `output/resumen_modelos.txt`.
 

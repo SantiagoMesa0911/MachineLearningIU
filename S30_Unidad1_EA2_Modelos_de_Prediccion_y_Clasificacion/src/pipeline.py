@@ -6,7 +6,7 @@ from typing import Dict
 import pandas as pd
 
 from . import config
-from .classification_model import LogisticRegressionClassifier
+from .classification_model import TextLogisticClassifier
 from .data_loader import HFDatasetLoader
 from .preprocessing import DataPreprocessor, split_data
 from .regression_model import LinearRegressionModel
@@ -16,12 +16,13 @@ from .regression_model import LinearRegressionModel
 class ExperimentResults:
     df_raw: pd.DataFrame
     df_clean: pd.DataFrame
+    df_regression: pd.DataFrame
     preprocessor: DataPreprocessor
     regression: LinearRegressionModel
     regression_metrics: Dict[str, float]
     regression_cv: Dict[str, float]
     regression_sizes: Dict[str, int]
-    classifier: LogisticRegressionClassifier
+    classifier: TextLogisticClassifier
     classification_metrics: Dict[str, object]
     classification_cv: Dict[str, float]
     classification_sizes: Dict[str, int]
@@ -32,8 +33,32 @@ def load_raw_data() -> pd.DataFrame:
 
 
 def build_preprocessor() -> DataPreprocessor:
-    return DataPreprocessor(config.COLUMN_MAPPING, config.COLUMNS_TO_DROP,
-                            config.LABEL_COLUMN, config.LABEL_PREFIX)
+    return DataPreprocessor(config.CONTEXT_COLUMN, config.TEXT_COLUMN,
+                            config.COMMANDS_COLUMN, config.TOOLS_COLUMN,
+                            config.COLUMNS_TO_DROP, config.CATEGORICAL_COLUMNS)
+
+
+def regression_subset(df_clean: pd.DataFrame) -> pd.DataFrame:
+    """Solo las peticiones que se responden con un comando (tienen command_length)."""
+    subset = df_clean[df_clean[config.REGRESSION_FILTER_COLUMN]
+                      == config.REGRESSION_FILTER_VALUE].reset_index(drop=True)
+    for column in subset.select_dtypes("category").columns:
+        subset[column] = subset[column].cat.remove_unused_categories()
+    return subset
+
+
+def build_regression() -> LinearRegressionModel:
+    return LinearRegressionModel(config.REGRESSION_NUMERIC_FEATURES,
+                                 config.REGRESSION_CATEGORICAL_FEATURES,
+                                 config.REGRESSION_TARGET)
+
+
+def build_classifier() -> TextLogisticClassifier:
+    return TextLogisticClassifier(
+        config.CLASSIFICATION_TEXT_FEATURE, config.CLASSIFICATION_NUMERIC_FEATURES,
+        config.CLASSIFICATION_TARGET, ngram_range=config.TFIDF_NGRAM_RANGE,
+        min_df=config.TFIDF_MIN_DF, class_weight=config.CLASS_WEIGHT,
+        max_iter=config.LOGISTIC_MAX_ITER, random_state=config.RANDOM_STATE)
 
 
 def run_experiment() -> ExperimentResults:
@@ -42,24 +67,20 @@ def run_experiment() -> ExperimentResults:
     preprocessor = build_preprocessor()
     df_clean = preprocessor.clean(df_raw)
 
-    # Regresión lineal
-    regression = LinearRegressionModel(config.REGRESSION_NUMERIC_FEATURES,
-                                       config.REGRESSION_CATEGORICAL_FEATURES,
-                                       config.REGRESSION_TARGET)
+    df_regression = regression_subset(df_clean)
+    regression = build_regression()
     X_train, X_test, y_train, y_test = split_data(
-        df_clean, regression.features, config.REGRESSION_TARGET,
-        config.TEST_SIZE, config.RANDOM_STATE, stratify_column=config.LABEL_COLUMN)
+        df_regression, regression.features, config.REGRESSION_TARGET,
+        config.TEST_SIZE, config.RANDOM_STATE,
+        stratify_column=config.REGRESSION_STRATIFY)
     regression.fit(X_train, y_train)
     regression_metrics = regression.evaluate(X_test, y_test)
     regression_cv = regression.cross_validate(X_train, y_train, config.CV_FOLDS)
     regression_sizes = {"train": len(X_train), "test": len(X_test)}
 
-    # Clasificación
-    classifier = LogisticRegressionClassifier(
-        config.CLASSIFICATION_FEATURES, config.CLASSIFICATION_TARGET,
-        max_iter=config.LOGISTIC_MAX_ITER, random_state=config.RANDOM_STATE)
+    classifier = build_classifier()
     X_train, X_test, y_train, y_test = split_data(
-        df_clean, config.CLASSIFICATION_FEATURES, config.CLASSIFICATION_TARGET,
+        df_clean, classifier.features, config.CLASSIFICATION_TARGET,
         config.TEST_SIZE, config.RANDOM_STATE,
         stratify_column=config.CLASSIFICATION_TARGET)
     classifier.fit(X_train, y_train)
@@ -69,7 +90,7 @@ def run_experiment() -> ExperimentResults:
                                                   config.RANDOM_STATE)
     classification_sizes = {"train": len(X_train), "test": len(X_test)}
 
-    return ExperimentResults(df_raw, df_clean, preprocessor,
+    return ExperimentResults(df_raw, df_clean, df_regression, preprocessor,
                              regression, regression_metrics, regression_cv,
                              regression_sizes, classifier,
                              classification_metrics, classification_cv,

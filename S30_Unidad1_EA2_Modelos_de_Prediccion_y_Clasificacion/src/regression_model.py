@@ -24,7 +24,8 @@ class LinearRegressionModel:
 
         preprocessor = ColumnTransformer(
             [("num", StandardScaler(), numeric_features),
-             ("cat", OneHotEncoder(drop="first"), categorical_features)],
+             ("cat", OneHotEncoder(drop="first", handle_unknown="ignore"),
+              categorical_features)],
             verbose_feature_names_out=False,
         )
         self.pipeline = Pipeline([("preprocess", preprocessor),
@@ -58,32 +59,34 @@ class LinearRegressionModel:
                                  cv=folds, scoring="r2")
         return {"r2_mean": float(scores.mean()), "r2_std": float(scores.std())}
 
-    def _scaler(self) -> StandardScaler:
-        return self.pipeline.named_steps["preprocess"].named_transformers_["num"]
+    def _transformer(self, name: str):
+        return self.pipeline.named_steps["preprocess"].named_transformers_[name]
 
     def coefficients(self) -> pd.DataFrame:
-        """Coeficientes por desviación estándar y por cm."""
+        """Coeficientes por desviación estándar y por unidad original."""
         model = self.pipeline.named_steps["model"]
         names = self.pipeline.named_steps["preprocess"].get_feature_names_out()
         per_unit = model.coef_.copy()
-        per_unit[: len(self.numeric_features)] /= self._scaler().scale_
+        per_unit[: len(self.numeric_features)] /= self._transformer("num").scale_
         return pd.DataFrame({"variable": names,
                              "coef_estandarizado": model.coef_,
-                             "coef_por_cm": per_unit})
+                             "coef_por_unidad": per_unit})
 
     def intercepts(self) -> Dict[str, float]:
         model = self.pipeline.named_steps["model"]
-        scaler = self._scaler()
-        per_cm = model.coef_[: len(self.numeric_features)] / scaler.scale_
+        scaler = self._transformer("num")
+        per_unit = model.coef_[: len(self.numeric_features)] / scaler.scale_
         return {
             "intercepto_estandarizado": float(model.intercept_),
             "intercepto_unidades_originales":
-                float(model.intercept_ - np.sum(per_cm * scaler.mean_)),
+                float(model.intercept_ - np.sum(per_unit * scaler.mean_)),
         }
 
-    def reference_category(self) -> str:
-        encoder = self.pipeline.named_steps["preprocess"].named_transformers_["cat"]
-        return str(encoder.categories_[0][0])
+    def reference_categories(self) -> Dict[str, str]:
+        """Categoría de referencia (eliminada por drop='first') de cada variable."""
+        encoder = self._transformer("cat")
+        return {feature: str(categories[0]) for feature, categories
+                in zip(self.categorical_features, encoder.categories_)}
 
     def params(self) -> Dict[str, object]:
         return self.pipeline.named_steps["model"].get_params()

@@ -4,87 +4,83 @@ from typing import Dict, List
 
 import pandas as pd
 
-from .classification_model import LogisticRegressionClassifier
+from .classification_model import TextLogisticClassifier
 from .regression_model import LinearRegressionModel
 
 
 def interpret_regression(model: LinearRegressionModel, metrics: Dict[str, float],
-                         cv: Dict[str, float], folds: int) -> List[str]:
+                         cv: Dict[str, float], folds: int, unit: str,
+                         feature_units: Dict[str, str]) -> List[str]:
     target = model.target
     mae, rmse, r2 = metrics["mae"], metrics["rmse"], metrics["r2"]
     baseline, mean = metrics["baseline_mae"], metrics["target_mean"]
     ratio = rmse / mae if mae else float("nan")
-    reference = model.reference_category()
+    references = model.reference_categories()
 
     lines = [
         f"R² = {r2:.3f}: el modelo explica el {r2 * 100:.1f}% de la variabilidad "
-        f"de {target} en los datos de prueba.",
-        f"MAE = {mae:.3f} cm: en promedio la predicción se aleja {mae:.2f} cm del "
-        f"valor real ({mae / mean * 100:.1f}% del valor medio, {mean:.2f} cm).",
-        f"RMSE = {rmse:.3f} cm ({ratio:.2f} veces el MAE): "
-        + ("los errores son homogéneos, sin errores grandes aislados."
-           if ratio < 1.3 else
-           "algunos errores grandes pesan más que el resto."),
-        f"Referencia: un modelo que siempre predice la media tendría MAE = "
-        f"{baseline:.3f} cm; la regresión reduce el error en "
-        f"{(1 - mae / baseline) * 100:.1f}%.",
+        f"de {target} en los datos de prueba"
+        + ("; el resto depende de factores que las variables no capturan."
+           if r2 < 0.5 else "."),
+        f"MAE = {mae:.2f} {unit}: en promedio la predicción se aleja {mae:.1f} "
+        f"{unit} del valor real ({mae / mean * 100:.1f}% del valor medio, "
+        f"{mean:.1f} {unit}).",
+        f"RMSE = {rmse:.2f} {unit} ({ratio:.2f} veces el MAE): "
+        + ("los errores son homogéneos." if ratio < 1.3 else
+           "hay algunos errores grandes (comandos mucho más largos de lo "
+           "esperado) que pesan más que el resto."),
+        f"Referencia: predecir siempre la media daría MAE = {baseline:.2f} {unit}; "
+        f"la regresión reduce el error en {(1 - mae / baseline) * 100:.1f}%.",
         f"Validación cruzada ({folds} pliegues sobre entrenamiento): R² = "
-        f"{cv['r2_mean']:.3f} ± {cv['r2_std']:.3f}; "
-        + ("el desempeño es estable entre particiones."
-           if cv["r2_std"] < 0.05 else
-           "el desempeño varía entre particiones."),
+        f"{cv['r2_mean']:.3f} ± {cv['r2_std']:.3f}"
+        + ("; el desempeño es estable." if cv["r2_std"] < 0.05 else
+           "; el desempeño varía bastante según la partición."),
     ]
 
     coefs = model.coefficients()
     n_num = len(model.numeric_features)
-    for i, row in coefs.iterrows():
-        if i < n_num:
-            lines.append(
-                f"Coeficiente {row['variable']}: {row['coef_por_cm']:+.3f} cm de "
-                f"{target} por cada cm adicional ({row['coef_estandarizado']:+.3f} "
-                f"cm por desviación estándar), con las demás variables constantes.")
-        else:
-            category = row["variable"].split("_", 1)[1]
-            lines.append(
-                f"Coeficiente {row['variable']}: una flor {category} tiene en "
-                f"promedio {row['coef_por_cm']:+.3f} cm de {target} frente a una "
-                f"{reference} con las mismas medidas.")
+    for _, row in coefs.iloc[:n_num].iterrows():
+        lines.append(
+            f"{row['variable']}: {row['coef_por_unidad']:+.3f} {unit} de {target} "
+            f"por cada {feature_units.get(row['variable'], 'unidad')} adicional "
+            f"({row['coef_estandarizado']:+.2f} por "
+            f"desviación estándar), con las demás variables constantes.")
 
-    numeric = coefs.iloc[:n_num]
-    strongest = numeric.loc[numeric["coef_estandarizado"].abs().idxmax(), "variable"]
-    lines.append(f"Entre las medidas numéricas, la de mayor peso (|coef. "
-                 f"estandarizado|) es {strongest}. Los coeficientes de especie "
-                 f"(0/1) no son comparables en esa escala, pero muestran que la "
-                 f"especie explica buena parte del largo del pétalo.")
+    categorical = coefs.iloc[n_num:]
+    if not categorical.empty:
+        top = categorical.loc[categorical["coef_estandarizado"].abs().idxmax()]
+        feature = next(f for f in model.categorical_features
+                       if top["variable"].startswith(f + "_"))
+        value = top["variable"][len(feature) + 1:]
+        lines.append(
+            f"Variable categórica con mayor efecto: {feature} = {value}, con "
+            f"{top['coef_estandarizado']:+.2f} {unit} frente a la referencia "
+            f"'{references[feature]}' con las mismas condiciones.")
 
     intercepts = model.intercepts()
-    lines += [
-        f"Intercepto (escala estandarizada) = "
-        f"{intercepts['intercepto_estandarizado']:.3f} cm: {target} estimado "
-        f"para una flor {reference} con medidas iguales a la media de "
-        f"entrenamiento.",
-        f"Intercepto en unidades originales = "
-        f"{intercepts['intercepto_unidades_originales']:.3f} cm (flor {reference} "
-        f"con todas las medidas en 0 cm): no tiene sentido físico, solo ubica "
-        f"el plano de regresión.",
-    ]
+    refs = ", ".join(f"{k}={v}" for k, v in references.items())
+    lines.append(
+        f"Intercepto = {intercepts['intercepto_estandarizado']:.2f} {unit}: valor "
+        f"estimado para las categorías de referencia ({refs}) con variables "
+        f"numéricas iguales a la media de entrenamiento. En unidades originales "
+        f"({intercepts['intercepto_unidades_originales']:.2f}) corresponde a "
+        f"variables en 0, sin sentido práctico.")
     return lines
 
 
 def describe_class_balance(distribution: pd.Series) -> str:
-    counts = ", ".join(f"{label}={count}" for label, count in distribution.items())
-    balanced = distribution.max() / distribution.min() <= 1.5
-    if balanced:
-        return (f"Distribución de clases: {counts}. Las clases están "
-                f"balanceadas, así que la exactitud es representativa; además "
-                f"se reportan precisión, recall y F1 macro, que dan el mismo "
-                f"peso a cada clase.")
-    return (f"Distribución de clases: {counts}. Las clases están "
-            f"desbalanceadas, así que la exactitud puede engañar; se priorizan "
-            f"F1, recall y precisión macro.")
+    counts = ", ".join(f"{label}={count} ({count / distribution.sum():.0%})"
+                       for label, count in distribution.items())
+    if distribution.max() / distribution.min() <= 1.5:
+        return (f"Distribución de clases: {counts}. Están balanceadas: la "
+                f"exactitud es representativa.")
+    return (f"Distribución de clases: {counts}. Están desbalanceadas: la "
+            f"exactitud premia a la clase mayoritaria, así que se priorizan "
+            f"recall y F1 macro (cada clase pesa igual) y se usa "
+            f"class_weight='balanced'.")
 
 
-def interpret_classification(model: LogisticRegressionClassifier,
+def interpret_classification(model: TextLogisticClassifier,
                              metrics: Dict[str, object], cv: Dict[str, float],
                              folds: int) -> List[str]:
     matrix: pd.DataFrame = metrics["confusion_matrix"]
@@ -93,43 +89,36 @@ def interpret_classification(model: LogisticRegressionClassifier,
     correct = int(sum(matrix.iat[i, i] for i in range(len(matrix))))
 
     lines = [
-        f"Exactitud = {metrics['accuracy']:.3f}: {correct} de {n_test} flores de "
-        f"prueba se clasificaron correctamente.",
-        f"Precisión macro = {metrics['precision_macro']:.3f}, recall macro = "
-        f"{metrics['recall_macro']:.3f}, F1 macro = {metrics['f1_macro']:.3f}.",
+        f"Exactitud = {metrics['accuracy']:.3f}: {correct} de {n_test} peticiones "
+        f"de prueba se clasificaron correctamente.",
+        f"F1 macro = {metrics['f1_macro']:.3f} (precisión macro = "
+        f"{metrics['precision_macro']:.3f}, recall macro = "
+        f"{metrics['recall_macro']:.3f}).",
     ]
+    for label in model.classes:
+        r = report[label]
+        lines.append(f"Clase {label}: recall {r['recall']:.3f} (detecta "
+                     f"{r['recall']:.0%} de los casos reales), precisión "
+                     f"{r['precision']:.3f}, F1 {r['f1-score']:.3f}, "
+                     f"{int(r['support'])} casos en prueba.")
 
     f1_by_class = {c: report[c]["f1-score"] for c in model.classes}
-    best = max(f1_by_class.values())
-    worst = min(f1_by_class.values())
-    best_classes = [c for c, v in f1_by_class.items() if v == best]
-    lines.append(f"Clase(s) mejor reconocida(s): {', '.join(best_classes)} "
-                 f"(F1 = {best:.3f}).")
-    if worst < best:
-        worst_classes = [c for c, v in f1_by_class.items() if v == worst]
-        lines.append(f"Clase(s) con menor F1: {', '.join(worst_classes)} "
-                     f"(F1 = {worst:.3f}).")
+    lines.append(f"Mejor reconocida: {max(f1_by_class, key=f1_by_class.get)}; "
+                 f"más difícil: {min(f1_by_class, key=f1_by_class.get)}.")
 
-    errors = []
-    for i, real in enumerate(model.classes):
-        for j, predicted in enumerate(model.classes):
-            count = int(matrix.iat[i, j])
-            if i != j and count:
-                errors.append(f"{count} flor(es) {real} clasificada(s) como {predicted}")
+    errors = [(int(matrix.iat[i, j]), real, pred)
+              for i, real in enumerate(model.classes)
+              for j, pred in enumerate(model.classes) if i != j and matrix.iat[i, j]]
     if errors:
-        lines.append("Errores de la matriz de confusión: " + "; ".join(errors) + ".")
+        errors.sort(reverse=True)
+        lines.append("Errores (de más a menos frecuente): " + "; ".join(
+            f"{n} {real} predicha(s) como {pred}" for n, real, pred in errors) + ".")
     else:
         lines.append("La matriz de confusión no muestra errores en prueba.")
 
-    lines.append(
-        f"Validación cruzada estratificada ({folds} pliegues sobre "
-        f"entrenamiento): exactitud = {cv['accuracy_mean']:.3f} ± "
-        f"{cv['accuracy_std']:.3f}.")
-
-    coefs = model.coefficients()
-    for label, row in coefs.iterrows():
-        feature = row.abs().idxmax()
-        lines.append(f"Para la clase {label}, la variable más influyente es "
-                     f"{feature} (coef. {row[feature]:+.3f} sobre datos "
-                     f"estandarizados).")
+    lines.append(f"Validación cruzada estratificada ({folds} pliegues sobre "
+                 f"entrenamiento): F1 macro = {cv['f1_macro_mean']:.3f} ± "
+                 f"{cv['f1_macro_std']:.3f}.")
+    for label, features in model.top_features(5).items():
+        lines.append(f"Términos que más empujan hacia {label}: {', '.join(features)}.")
     return lines

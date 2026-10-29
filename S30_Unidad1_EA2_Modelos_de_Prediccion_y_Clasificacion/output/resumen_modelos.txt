@@ -2,51 +2,57 @@
 S30 - EA2 UNIDAD 1 - MODELOS DE PREDICCIÓN Y CLASIFICACIÓN
 Resumen generado automáticamente por código
 ==============================================================================
-Fecha de ejecución: 2026-10-25 22:05:32 (UTC-0500)
+Fecha de ejecución: 2026-10-28 22:06:25 (UTC-0500)
 Entorno: Python 3.12.10 | pandas 3.1.0 | scikit-learn 1.9.1 | datasets 5.1.0
 
 ==============================================================================
 1. DATASET
 ==============================================================================
-Identificador: scikit-learn/iris
-Enlace:        https://huggingface.co/datasets/scikit-learn/iris
-Split:         train (único split disponible)
+Identificador: manuelgscom/dale-bash-test-v2
+Enlace:        https://huggingface.co/datasets/manuelgscom/dale-bash-test-v2
+Split:         test (único split publicado)
+Contenido:     peticiones en lenguaje natural (es/en) a un asistente de terminal Linux, con el tipo de respuesta esperado y comandos bash de referencia.
 Obtención:     automática con datasets.load_dataset() -> pandas
-Tamaño original: 150 filas x 6 columnas
-Columnas originales: ['Id', 'SepalLengthCm', 'SepalWidthCm', 'PetalLengthCm', 'PetalWidthCm', 'Species']
-Tamaño limpio:   147 filas x 5 columnas
-Columnas limpias:    ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species']
+Tamaño original: 471 filas x 8 columnas
+Columnas originales: ['id', 'lang', 'category', 'context', 'request', 'expected_type', 'reference_commands', 'notes']
+Tamaño limpio:   471 filas x 10 columnas
+Columnas limpias:    ['lang', 'category', 'request', 'expected_type', 'distro', 'pm', 'request_length', 'n_paths', 'n_tools', 'command_length']
 
 ==============================================================================
 2. PREPROCESAMIENTO
 ==============================================================================
 Operaciones sobre el DataFrame completo (no aprenden de los datos):
-  1. Renombrar columnas
-     Motivo: Nombres en snake_case, sin la unidad 'Cm'.
-     Efecto: ['Id', 'SepalLengthCm', 'SepalWidthCm', 'PetalLengthCm', 'PetalWidthCm', 'Species'] -> ['id', 'sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species']
+  1. Expandir columna anidada
+     Motivo: 'context' es un diccionario; los modelos necesitan columnas planas.
+     Efecto: context -> ['os', 'distro', 'pm', 'tools']
   2. Eliminar columnas
-     Motivo: 'id' solo numera las filas y el archivo está ordenado por especie, así que delataría la clase.
-     Efecto: Columnas eliminadas: ['id']; quedan 5.
-  3. Normalizar etiquetas y corregir tipo
-     Motivo: El prefijo 'Iris-' es redundante y la especie es categórica.
-     Efecto: ['Iris-setosa', 'Iris-versicolor', 'Iris-virginica'] -> ['setosa', 'versicolor', 'virginica'] (tipo 'category').
-  4. Revisar valores nulos
-     Motivo: scikit-learn no acepta valores faltantes.
-     Efecto: Nulos encontrados: 0; filas eliminadas: 0.
-  5. Eliminar filas duplicadas
-     Motivo: Una fila repetida en train y test a la vez infla las métricas.
-     Efecto: Duplicados encontrados: 3; filas: 150 -> 147.
+     Motivo: id: Identificador único: no describe la petición. os: Vale 'linux' en todas las filas: no aporta información. notes: Comentario para evaluadores que anticipa la respuesta esperada (fuga).
+     Efecto: Columnas eliminadas: ['id', 'os', 'notes'].
+  3. Nulos y duplicados
+     Motivo: Una petición vacía no se puede modelar y una repetida en train y test infla las métricas.
+     Efecto: Nulos: 0; peticiones duplicadas: 0; filas: 471 -> 471.
+  4. Corregir tipos
+     Motivo: Estas columnas toman pocos valores fijos: son categóricas.
+     Efecto: ['lang', 'category', 'distro', 'pm', 'expected_type'] -> tipo 'category'.
+  5. Enriquecer con variables numéricas
+     Motivo: El texto y las listas no son numéricos; se resumen en variables que los modelos pueden usar.
+     Efecto: request_length (caracteres de la petición), n_paths (rutas mencionadas), n_tools (herramientas instaladas), command_length (caracteres del comando de referencia; vacío si no se espera comando).
+  6. Eliminar listas ya resumidas
+     Motivo: Las listas originales no son utilizables por los modelos.
+     Efecto: Columnas eliminadas: ['tools', 'reference_commands']; quedan 10.
 Operaciones dentro de cada Pipeline (ajustadas SOLO con entrenamiento):
-  - StandardScaler: centra en 0 y escala a desviación 1 las variables numéricas.
-  - OneHotEncoder(drop='first') (solo regresión): convierte 'species' en variables 0/1.
-División entrenamiento/prueba: test_size=0.3, random_state=42, estratificada por especie.
+  - StandardScaler: escala las variables numéricas (media 0, desviación 1).
+  - OneHotEncoder(drop='first') (regresión): lang y category -> variables 0/1.
+  - TfidfVectorizer (clasificación): convierte el texto de la petición en pesos de palabras y bigramas; el vocabulario se aprende solo con entrenamiento.
+División entrenamiento/prueba: test_size=0.3, random_state=42, estratificada.
 
 ==============================================================================
 3. MODELO DE REGRESIÓN LINEAL
 ==============================================================================
-Objetivo: estimar el largo del pétalo (cm) a partir de las demás medidas de la flor y su especie.
-Variable objetivo:      petal_length
-Variables predictoras:  ['sepal_length', 'sepal_width', 'petal_width', 'species']
+Objetivo: estimar la longitud (en caracteres) del comando bash que resuelve una petición, como medida de su complejidad.
+Datos: solo peticiones con expected_type = 'command' (339 filas); las demás no tienen comando.
+Variable objetivo:      command_length (media 38.4, mín 3, máx 188 caracteres)
+Variables predictoras:  ['request_length', 'n_paths', 'n_tools', 'lang', 'category']
 Algoritmo: sklearn.linear_model.LinearRegression (mínimos cuadrados ordinarios)
 Parámetros (todos predeterminados de scikit-learn):
     copy_X = True
@@ -54,48 +60,60 @@ Parámetros (todos predeterminados de scikit-learn):
     n_jobs = None
     positive = False
     tol = 1e-06
-Entrenamiento / prueba: 102 / 45 filas
+Entrenamiento / prueba: 237 / 102 filas (estratificado por category)
 
 Métricas en prueba:
-    MAE  = 0.2199 cm
-    RMSE = 0.2921 cm
-    R²   = 0.9705
-    MAE modelo base (media) = 1.5159 cm
-    R² validación cruzada (5 pliegues) = 0.9748 ± 0.0131
+    MAE  = 14.781 caracteres
+    RMSE = 22.404 caracteres
+    R²   = 0.2404
+    MAE modelo base (media) = 17.224 caracteres
+    R² validación cruzada (5 pliegues) = 0.2019 ± 0.0727
 
 Coeficientes:
-          variable  coef_estandarizado  coef_por_cm
-      sepal_length              0.5574       0.6385
-       sepal_width             -0.0840      -0.1856
-       petal_width              0.4953       0.6429
-species_versicolor              1.3461       1.3461
- species_virginica              1.8114       1.8114
+         variable  coef_estandarizado  coef_por_unidad
+   request_length               8.433            0.264
+          n_paths               4.766            7.994
+          n_tools               2.003            1.096
+          lang_es              -2.514           -2.514
+  category_discos               1.847            1.847
+  category_docker               5.264            5.264
+category_ficheros              -1.510           -1.510
+     category_git               2.747            2.747
+    category_misc               4.542            4.542
+category_paquetes             -11.926          -11.926
+category_permisos              -4.185           -4.185
+category_procesos              -4.531           -4.531
+     category_red               3.373            3.373
+ category_sistema              -0.020           -0.020
+   category_texto               0.005            0.005
 
 Interpretación:
-  - R² = 0.970: el modelo explica el 97.0% de la variabilidad de petal_length en los datos de prueba.
-  - MAE = 0.220 cm: en promedio la predicción se aleja 0.22 cm del valor real (5.9% del valor medio, 3.70 cm).
-  - RMSE = 0.292 cm (1.33 veces el MAE): algunos errores grandes pesan más que el resto.
-  - Referencia: un modelo que siempre predice la media tendría MAE = 1.516 cm; la regresión reduce el error en 85.5%.
-  - Validación cruzada (5 pliegues sobre entrenamiento): R² = 0.975 ± 0.013; el desempeño es estable entre particiones.
-  - Coeficiente sepal_length: +0.639 cm de petal_length por cada cm adicional (+0.557 cm por desviación estándar), con las demás variables constantes.
-  - Coeficiente sepal_width: -0.186 cm de petal_length por cada cm adicional (-0.084 cm por desviación estándar), con las demás variables constantes.
-  - Coeficiente petal_width: +0.643 cm de petal_length por cada cm adicional (+0.495 cm por desviación estándar), con las demás variables constantes.
-  - Coeficiente species_versicolor: una flor versicolor tiene en promedio +1.346 cm de petal_length frente a una setosa con las mismas medidas.
-  - Coeficiente species_virginica: una flor virginica tiene en promedio +1.811 cm de petal_length frente a una setosa con las mismas medidas.
-  - Entre las medidas numéricas, la de mayor peso (|coef. estandarizado|) es sepal_length. Los coeficientes de especie (0/1) no son comparables en esa escala, pero muestran que la especie explica buena parte del largo del pétalo.
-  - Intercepto (escala estandarizada) = 2.751 cm: petal_length estimado para una flor setosa con medidas iguales a la media de entrenamiento.
-  - Intercepto en unidades originales = -1.221 cm (flor setosa con todas las medidas en 0 cm): no tiene sentido físico, solo ubica el plano de regresión.
+  - R² = 0.240: el modelo explica el 24.0% de la variabilidad de command_length en los datos de prueba; el resto depende de factores que las variables no capturan.
+  - MAE = 14.78 caracteres: en promedio la predicción se aleja 14.8 caracteres del valor real (37.5% del valor medio, 39.4 caracteres).
+  - RMSE = 22.40 caracteres (1.52 veces el MAE): hay algunos errores grandes (comandos mucho más largos de lo esperado) que pesan más que el resto.
+  - Referencia: predecir siempre la media daría MAE = 17.22 caracteres; la regresión reduce el error en 14.2%.
+  - Validación cruzada (5 pliegues sobre entrenamiento): R² = 0.202 ± 0.073; el desempeño varía bastante según la partición.
+  - request_length: +0.264 caracteres de command_length por cada carácter de la petición adicional (+8.43 por desviación estándar), con las demás variables constantes.
+  - n_paths: +7.994 caracteres de command_length por cada ruta mencionada adicional (+4.77 por desviación estándar), con las demás variables constantes.
+  - n_tools: +1.096 caracteres de command_length por cada herramienta instalada adicional (+2.00 por desviación estándar), con las demás variables constantes.
+  - Variable categórica con mayor efecto: category = paquetes, con -11.93 caracteres frente a la referencia 'compresion' con las mismas condiciones.
+  - Intercepto = 40.12 caracteres: valor estimado para las categorías de referencia (lang=en, category=compresion) con variables numéricas iguales a la media de entrenamiento. En unidades originales (5.39) corresponde a variables en 0, sin sentido práctico.
 
 ==============================================================================
 4. MODELO DE CLASIFICACIÓN
 ==============================================================================
-Objetivo: identificar la especie de una flor a partir de sus cuatro medidas.
-Variable objetivo:      species  (clases: ['setosa', 'versicolor', 'virginica'])
-Variables predictoras:  ['sepal_length', 'sepal_width', 'petal_length', 'petal_width']
-Algoritmo: sklearn.linear_model.LogisticRegression (multinomial). Modelo lineal, interpretable y adecuado para pocas variables numéricas y clases casi separables.
-Hiperparámetros (max_iter y random_state fijados; el resto predeterminados):
+Objetivo: decidir, a partir del texto de la petición, si el asistente debe responder con un comando (command), rechazarla por estar fuera de ámbito (refuse) o pedir aclaración por ambigua (unsure).
+Variable objetivo:      expected_type  (clases: ['command', 'refuse', 'unsure'])
+Variables predictoras:  request (TF-IDF) + ['request_length', 'n_paths']
+Variables excluidas por revelar la respuesta (fuga de información):
+    category: 'fuera_de_ambito' equivale siempre a 'refuse' y 'ambigua' a 'unsure'.
+    reference_commands: Está vacía justo cuando no se espera un comando.
+    command_length: Derivada de reference_commands.
+Algoritmo: TfidfVectorizer + sklearn.linear_model.LogisticRegression. Es un modelo lineal, rápido e interpretable (cada palabra tiene un peso por clase) y funciona bien con textos cortos y pocos datos.
+TF-IDF: ngram_range=(1, 2), min_df=2, sublinear_tf=True (vocabulario aprendido: 1132 términos)
+Hiperparámetros de LogisticRegression (class_weight, max_iter y random_state fijados; el resto predeterminados):
     C = 1.0
-    class_weight = None
+    class_weight = balanced
     dual = False
     fit_intercept = True
     intercept_scaling = 1
@@ -109,53 +127,53 @@ Hiperparámetros (max_iter y random_state fijados; el resto predeterminados):
     verbose = 0
     warm_start = False
     Nota: en scikit-learn >= 1.8 'penalty' figura como 'deprecated'; la regularización la define l1_ratio = 0.0, es decir, L2 con fuerza 1/C.
-Entrenamiento / prueba: 102 / 45 filas
-Distribución de clases: setosa=48, versicolor=50, virginica=49. Las clases están balanceadas, así que la exactitud es representativa; además se reportan precisión, recall y F1 macro, que dan el mismo peso a cada clase.
+Entrenamiento / prueba: 329 / 142 filas (estratificado por clase)
+Distribución de clases: command=339 (72%), refuse=101 (21%), unsure=31 (7%). Están desbalanceadas: la exactitud premia a la clase mayoritaria, así que se priorizan recall y F1 macro (cada clase pesa igual) y se usa class_weight='balanced'.
 
 Métricas en prueba:
-    Exactitud        = 0.9111
-    Precisión macro  = 0.9155
-    Recall macro     = 0.9111
-    F1 macro         = 0.9107
+    Exactitud        = 0.8239
+    Precisión macro  = 0.6763
+    Recall macro     = 0.7646
+    F1 macro         = 0.7011
 
 Matriz de confusión (filas = clase real, columnas = predicción):
-                 pred_setosa  pred_versicolor  pred_virginica
-real_setosa               15                0               0
-real_versicolor            0               14               1
-real_virginica             0                3              12
+              pred_command  pred_refuse  pred_unsure
+real_command            87            7            8
+real_refuse              3           24            4
+real_unsure              2            1            6
 
 Reporte por clase:
               precision    recall  f1-score   support
 
-      setosa      1.000     1.000     1.000        15
-  versicolor      0.824     0.933     0.875        15
-   virginica      0.923     0.800     0.857        15
+     command      0.946     0.853     0.897       102
+      refuse      0.750     0.774     0.762        31
+      unsure      0.333     0.667     0.444         9
 
-    accuracy                          0.911        45
-   macro avg      0.916     0.911     0.911        45
-weighted avg      0.916     0.911     0.911        45
+    accuracy                          0.824       142
+   macro avg      0.676     0.765     0.701       142
+weighted avg      0.864     0.824     0.839       142
 
 Interpretación:
-  - Exactitud = 0.911: 41 de 45 flores de prueba se clasificaron correctamente.
-  - Precisión macro = 0.916, recall macro = 0.911, F1 macro = 0.911.
-  - Clase(s) mejor reconocida(s): setosa (F1 = 1.000).
-  - Clase(s) con menor F1: virginica (F1 = 0.857).
-  - Errores de la matriz de confusión: 1 flor(es) versicolor clasificada(s) como virginica; 3 flor(es) virginica clasificada(s) como versicolor.
-  - Validación cruzada estratificada (5 pliegues sobre entrenamiento): exactitud = 0.980 ± 0.040.
-  - Para la clase setosa, la variable más influyente es petal_length (coef. -1.698 sobre datos estandarizados).
-  - Para la clase versicolor, la variable más influyente es petal_width (coef. -0.802 sobre datos estandarizados).
-  - Para la clase virginica, la variable más influyente es petal_width (coef. +2.363 sobre datos estandarizados).
+  - Exactitud = 0.824: 117 de 142 peticiones de prueba se clasificaron correctamente.
+  - F1 macro = 0.701 (precisión macro = 0.676, recall macro = 0.765).
+  - Clase command: recall 0.853 (detecta 85% de los casos reales), precisión 0.946, F1 0.897, 102 casos en prueba.
+  - Clase refuse: recall 0.774 (detecta 77% de los casos reales), precisión 0.750, F1 0.762, 31 casos en prueba.
+  - Clase unsure: recall 0.667 (detecta 67% de los casos reales), precisión 0.333, F1 0.444, 9 casos en prueba.
+  - Mejor reconocida: command; más difícil: unsure.
+  - Errores (de más a menos frecuente): 8 command predicha(s) como unsure; 7 command predicha(s) como refuse; 4 refuse predicha(s) como unsure; 3 refuse predicha(s) como command; 2 unsure predicha(s) como command; 1 unsure predicha(s) como refuse.
+  - Validación cruzada estratificada (5 pliegues sobre entrenamiento): F1 macro = 0.628 ± 0.096.
+  - Términos que más empujan hacia command: sin, tiene, ya, request_length, txt.
+  - Términos que más empujan hacia refuse: qué, un, my, is, cómo.
+  - Términos que más empujan hacia unsure: que, to the, n_paths, to, que te.
 
 ==============================================================================
 5. CONCLUSIONES Y LIMITACIONES
 ==============================================================================
-  - La regresión lineal estima petal_length con un error medio de 0.22 cm (R² = 0.970).
-  - El clasificador identifica la especie con exactitud de 0.911 y F1 macro de 0.911.
-  - Dataset pequeño (147 flores; 45 en prueba): cada error en prueba cambia la exactitud en 2.2 puntos. Por eso se reporta también validación cruzada.
-  - Las medidas están muy correlacionadas entre sí y con la especie (multicolinealidad): los coeficientes individuales de la regresión deben leerse con cautela y no implican causalidad.
-  - La regresión usa la especie como predictora, así que requiere conocerla de antemano.
-  - La regresión supone relaciones lineales; no captura curvaturas ni interacciones entre variables.
-  - versicolor y virginica se solapan en sus medidas; es ahí donde el clasificador puede equivocarse.
-  - Iris es un conjunto limpio y bien separado; los resultados no se generalizan a otras especies o condiciones de medición.
+  - La regresión estima la longitud del comando con un error medio de 14.8 caracteres (R² = 0.240). La longitud de la petición y el número de rutas ayudan, pero la mayor parte de la variación depende de la sintaxis concreta de cada comando, que no se observa en la petición.
+  - El objetivo de la regresión es un conteo construido a partir de reference_commands; solo se usa como objetivo, nunca como predictor. Tiene cola larga (pocos comandos muy largos), lo que aumenta el RMSE.
+  - El clasificador alcanza F1 macro = 0.701. Distingue bien command de refuse por el vocabulario, pero la clase unsure (solo 9 casos en prueba) es la más difícil: una petición ambigua usa las mismas palabras que una petición válida.
+  - Sin class_weight='balanced' el modelo tendería a no predecir nunca la clase minoritaria; el balanceo mejora su recall a costa de algunos falsos positivos.
+  - Dataset pequeño (471 peticiones) y bilingüe: el vocabulario se reparte entre español e inglés. Por eso se reporta también validación cruzada.
+  - Los modelos son lineales: no capturan el significado de la petición, solo qué palabras aparecen y algunos rasgos numéricos.
 
 ==============================================================================
