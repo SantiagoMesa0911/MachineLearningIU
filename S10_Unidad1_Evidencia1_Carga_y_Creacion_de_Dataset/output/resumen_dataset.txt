@@ -1,45 +1,117 @@
 ======================================================================
-RESUMEN DEL DATASET IRIS TRANSFORMADO
+RESUMEN DEL DATASET DALE-BASH-TEST-V2 TRANSFORMADO
 ======================================================================
 
-Cantidad de filas:    128
-Cantidad de columnas: 6
+Cantidad de filas:    339
+Cantidad de columnas: 11
 
 COLUMNAS Y TIPOS DE DATO
 ----------------------------------------------------------------------
-  sepal_length         float64
-  sepal_width          float64
-  petal_length         float64
-  petal_width          float64
-  species              str
-  petal_area           float64
+  id                   str
+  lang                 str
+  category             str
+  distro               str
+  pm                   str
+  tools                object
+  request              str
+  expected_type        str
+  reference_commands   object
+  request_length       int64
+  n_tools              int64
 
 VALORES NULOS POR COLUMNA
 ----------------------------------------------------------------------
-  sepal_length         0
-  sepal_width          0
-  petal_length         0
-  petal_width          0
-  species              0
-  petal_area           0
+  id                   0
+  lang                 0
+  category             0
+  distro               0
+  pm                   0
+  tools                0
+  request              0
+  expected_type        0
+  reference_commands   0
+  request_length       0
+  n_tools              0
 
 ESTADÍSTICAS DESCRIPTIVAS (columnas numéricas)
 ----------------------------------------------------------------------
-       sepal_length  sepal_width  petal_length  petal_width  petal_area
-count       128.000      128.000       128.000      128.000     128.000
-mean          6.041        3.054         4.122        1.354       6.661
-std           0.727        0.452         1.627        0.704       4.519
-min           5.000        2.000         1.200        0.100       0.150
-25%           5.500        2.800         3.450        1.000       3.450
-50%           6.000        3.000         4.500        1.400       6.650
-75%           6.500        3.325         5.225        1.900      10.072
-max           7.900        4.400         6.900        2.500      15.870
+       request_length  n_tools
+count         339.000  339.000
+mean          109.947    2.593
+std            31.712    1.823
+min            43.000    0.000
+25%            87.000    1.000
+50%           110.000    3.000
+75%           129.000    4.000
+max           199.000    9.000
 
-FRECUENCIA DE VALORES: species
+FRECUENCIA DE VALORES: id (339 valores distintos)
 ----------------------------------------------------------------------
-species
-Iris-versicolor    49
-Iris-virginica     49
-Iris-setosa        30
+  Todos los valores son distintos (texto libre o identificador).
+
+FRECUENCIA DE VALORES: lang (2 valores distintos)
+----------------------------------------------------------------------
+lang
+es    187
+en    152
+
+FRECUENCIA DE VALORES: category (12 valores distintos) - top 10
+----------------------------------------------------------------------
+category
+ficheros      42
+texto         40
+procesos      30
+sistema       29
+paquetes      28
+permisos      28
+git           28
+red           25
+misc          25
+compresion    23
+
+FRECUENCIA DE VALORES: distro (7 valores distintos)
+----------------------------------------------------------------------
+distro
+arch            75
+ubuntu-24.04    60
+debian-12       60
+ubuntu-22.04    52
+fedora-40       34
+fedora-41       31
+fedora-42       27
+
+FRECUENCIA DE VALORES: pm (3 valores distintos)
+----------------------------------------------------------------------
+pm
+apt       172
+dnf        92
+pacman     75
+
+FRECUENCIA DE VALORES: tools (180 valores distintos) - top 10
+----------------------------------------------------------------------
+tools
+(vacía)                        66
+sudo                           19
+git, sudo                       9
+journalctl, sudo, systemctl     7
+bat, fd, rg, sudo               6
+git                             6
+bat, fd, rg                     5
+bat, fd, git, rg                4
+curl, sudo                      4
+ip, sudo                        4
+
+FRECUENCIA DE VALORES: request (339 valores distintos)
+----------------------------------------------------------------------
+  Todos los valores son distintos (texto libre o identificador).
+
+FRECUENCIA DE VALORES: expected_type (1 valores distintos)
+----------------------------------------------------------------------
+expected_type
+command    339
+
+FRECUENCIA DE VALORES: reference_commands (339 valores distintos)
+----------------------------------------------------------------------
+  Todos los valores son distintos (texto libre o identificador).
 
 ======================================================================

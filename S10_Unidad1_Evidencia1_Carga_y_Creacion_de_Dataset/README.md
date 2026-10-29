@@ -21,12 +21,13 @@ y se versiona con Git/GitHub.
 
 ## 📊 Dataset
 
-[`scikit-learn/iris`](https://huggingface.co/datasets/scikit-learn/iris)
+[`manuelgscom/dale-bash-test-v2`](https://huggingface.co/datasets/manuelgscom/dale-bash-test-v2) (split `test`)
 
-Es el clásico dataset Iris: 150 flores de tres especies (*setosa*, *versicolor* y *virginica*)
-con cuatro medidas en centímetros (largo y ancho del sépalo y del pétalo). Se eligió porque es
-pequeño, conocido y permite transformaciones fáciles de explicar. Se descarga directamente del
-Hub de Hugging Face mediante `datasets.load_dataset`, sin archivos CSV manuales.
+471 peticiones en lenguaje natural (español e inglés) dirigidas a un asistente de terminal
+Linux. Cada fila incluye la categoría, el entorno (`context`: distribución, gestor de paquetes y
+herramientas instaladas), el tipo de respuesta esperado (`command`, `refuse` o `unsure`) y los
+comandos bash de referencia. Se descarga directamente del Hub de Hugging Face mediante
+`datasets.load_dataset`, sin archivos CSV manuales. El dataset solo publica el split `test`.
 
 ## 📌 Estructura del proyecto
 
@@ -61,7 +62,7 @@ Archivo: `src/hf_dataset_loader.py`
 - No transforma datos ni genera archivos.
 
 ```python
-loader = HFDatasetLoader("scikit-learn/iris", split="train")
+loader = HFDatasetLoader("manuelgscom/dale-bash-test-v2", split="test")
 df = loader.load()
 ```
 
@@ -78,7 +79,8 @@ El resumen incluye:
 - Nombre y tipo de dato de cada columna.
 - Cantidad de valores nulos por columna.
 - Estadísticas descriptivas de las columnas numéricas.
-- Frecuencia de valores de las columnas categóricas.
+- Frecuencia de valores de las columnas categóricas (top 10 si hay muchas; las listas se
+  cuentan como texto y las columnas de texto libre solo indican que todos sus valores son distintos).
 
 ```python
 summarizer = DatasetSummarizer(df_final)
@@ -91,10 +93,10 @@ Todas se aplican en el Notebook, en este orden:
 
 | # | Transformación | Descripción |
 |---|----------------|-------------|
-| 1 | Renombrar columnas | `SepalLengthCm` → `sepal_length`, etc. Nombres en snake_case, claros y consistentes. |
-| 2 | Seleccionar columnas | Se conservan las cuatro medidas y `species`; se descarta `id`, que solo numera las filas. |
-| 3 | Filtrar registros | Se conservan las flores con `sepal_length >= 5.0` cm (150 → 128 filas). |
-| 4 | Columna derivada | `petal_area = petal_length * petal_width`: aproximación del área del pétalo en cm². |
+| 1 | Expandir columna anidada | `context` (diccionario) → columnas `os`, `distro`, `pm`, `tools` con `pd.json_normalize`. |
+| 2 | Seleccionar columnas | Se descartan `os` (siempre `linux`) y `notes` (comentario para evaluadores). |
+| 3 | Filtrar registros | Solo peticiones con `expected_type == "command"` (471 → 339 filas). |
+| 4 | Columnas derivadas | `request_length` (caracteres de la petición) y `n_tools` (herramientas instaladas). |
 
 El resultado es `df_final`, que es el DataFrame que se envía a `DatasetSummarizer`.
 

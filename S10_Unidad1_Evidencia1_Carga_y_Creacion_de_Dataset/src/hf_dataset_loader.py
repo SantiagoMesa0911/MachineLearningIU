@@ -13,7 +13,7 @@ class HFDatasetLoader:
     No transforma los datos ni genera archivos.
 
     Ejemplo:
-        >>> loader = HFDatasetLoader("scikit-learn/iris")
+        >>> loader = HFDatasetLoader("manuelgscom/dale-bash-test-v2", split="test")
         >>> df = loader.load()
     """
 
@@ -23,7 +23,7 @@ class HFDatasetLoader:
 
         Args:
             dataset_id: Identificador del dataset en Hugging Face
-                (por ejemplo, "scikit-learn/iris").
+                (por ejemplo, "manuelgscom/dale-bash-test-v2").
             split: Partición a cargar ("train", "test", ...).
             config_name: Configuración del dataset, si tiene varias.
 

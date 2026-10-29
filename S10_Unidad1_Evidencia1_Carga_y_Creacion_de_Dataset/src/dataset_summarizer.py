@@ -17,6 +17,8 @@ class DatasetSummarizer:
         >>> summarizer.save("output/resumen_dataset.txt")
     """
 
+    MAX_CATEGORIES = 10
+
     def __init__(self, dataframe: pd.DataFrame,
                  title: str = "Resumen del dataset") -> None:
         """Inicializa el generador de resumen.
@@ -74,8 +76,20 @@ class DatasetSummarizer:
 
         categorical_df = df.select_dtypes(exclude="number")
         for column in categorical_df.columns:
-            lines += ["", f"FRECUENCIA DE VALORES: {column}", "-" * 70,
-                      categorical_df[column].value_counts().to_string()]
+            # Las listas no son hashables: se cuentan como texto
+            values = categorical_df[column].map(
+                lambda v: (", ".join(map(str, v)) or "(vacía)")
+                if hasattr(v, "__len__") and not isinstance(v, str) else v)
+            unique = values.nunique()
+            title = f"FRECUENCIA DE VALORES: {column} ({unique} valores distintos)"
+            if unique == len(values):
+                lines += ["", title, "-" * 70,
+                          "  Todos los valores son distintos (texto libre o identificador)."]
+                continue
+            if unique > self.MAX_CATEGORIES:
+                title += f" - top {self.MAX_CATEGORIES}"
+            lines += ["", title, "-" * 70,
+                      values.value_counts().head(self.MAX_CATEGORIES).to_string()]
 
         lines += ["", separator]
         return "\n".join(lines)
