@@ -1,0 +1,47 @@
+name: S30 EA3 - Aprendizaje supervisado (Random Forest)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "S30_Unidad2_EA3_Aprendizaje_Supervisado_y_No_Supervisado/**"
+      - ".github/workflows/s30_ea3_supervisado.yml"
+  workflow_dispatch:
+
+env:
+  PROJECT_DIR: S30_Unidad2_EA3_Aprendizaje_Supervisado_y_No_Supervisado
+
+jobs:
+  entrenar-y-evaluar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+
+    steps:
+      - name: Descargar el código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ${{ env.PROJECT_DIR }}/requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ejecutar flujo completo (Hugging Face -> modelo -> resumen y gráficas)
+        run: python main.py
+
+      - name: Publicar resumen y gráficas como artefacto descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumen-ea3
+          path: |
+            ${{ env.PROJECT_DIR }}/output/resumen_ejecucion.txt
+            ${{ env.PROJECT_DIR }}/output/figuras/*.png
+          if-no-files-found: error
