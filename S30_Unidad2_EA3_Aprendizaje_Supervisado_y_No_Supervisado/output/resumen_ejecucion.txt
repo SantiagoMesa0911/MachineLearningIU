@@ -1,0 +1,137 @@
+==============================================================================
+S30 - EA3 UNIDAD 2 - APRENDIZAJE SUPERVISADO Y NO SUPERVISADO
+Resumen generado automáticamente por código
+==============================================================================
+Fecha de ejecución: 2026-11-07 23:06:03 (UTC-0500)
+Entorno: Python 3.12.10 | pandas 3.1.0 | scikit-learn 1.9.1 | datasets 5.1.0
+
+==============================================================================
+1. PREGUNTA DE NEGOCIO
+==============================================================================
+Pregunta:  ¿Qué características de un alojamiento de Airbnb en Londres hacen que su precio de fin de semana quede por encima de la mediana del mercado, para fijar el precio de un anuncio y decidir en qué mejoras invertir?
+Quién:     Anfitriones de Airbnb en Londres y agencias que gestionan alojamientos por ellos (equipo de precios).
+Decisión:  Ubicar un anuncio en la gama de precio alta o estándar, detectar anuncios con potencial para cobrar más y priorizar inversiones (capacidad, habitaciones, calidad del servicio) según su efecto en el precio.
+
+==============================================================================
+2. DATASET
+==============================================================================
+Identificador: kraina/airbnb_london_weekends
+Enlace:        https://huggingface.co/datasets/kraina/airbnb_london_weekends
+Split:         train (único publicado)
+Fuente original: Gyódi, K. y Nawaro, Ł. (2021). Determinants of Airbnb prices in European cities: A spatial econometrics approach. Tourism Management, 86.
+Obtención:     automática con datasets.load_dataset() -> pandas
+Tamaño original: 5379 filas x 18 columnas
+Columnas originales: ['_id', 'realSum', 'room_type', 'room_shared', 'room_private', 'person_capacity', 'host_is_superhost', 'multi', 'biz', 'cleanliness_rating', 'guest_satisfaction_overall', 'bedrooms', 'dist', 'metro_dist', 'attr_index', 'attr_index_norm', 'rest_index', 'rest_index_norm']
+Tamaño limpio:   5379 filas x 12 columnas
+Precio (realSum, € por estancia): mediana 268.1, media 364.4, mín 54.3, máx 12937.3
+
+==============================================================================
+3. PREPROCESAMIENTO
+==============================================================================
+  1. Eliminar columnas redundantes
+     Motivo: _id: identificador del anuncio, no describe el alojamiento; room_shared: repite room_type (Shared room); room_private: repite room_type (Private room); attr_index_norm: versión reescalada de attr_index (correlación 1.0); rest_index_norm: versión reescalada de rest_index (correlación 1.0)
+     Efecto: 18 -> 13 columnas.
+  2. Enriquecer: tipo de anfitrión
+     Motivo: multi y biz son excluyentes (casos con ambas en 1: 0); juntas describen un solo dato.
+     Efecto: multi + biz -> host_type: {'particular (1 anuncio)': 1949, 'empresa (>4 anuncios)': 1925, 'multi (2-4 anuncios)': 1505}.
+  3. Nulos y duplicados
+     Motivo: Un anuncio repetido en train y test inflaría las métricas.
+     Efecto: Nulos: 0; duplicados: 0; filas: 5379 -> 5379.
+  4. Corregir tipos
+     Motivo: Los modelos de scikit-learn requieren números; las categorías se codifican después dentro del Pipeline.
+     Efecto: host_is_superhost: bool -> 0/1; numéricas -> float; ['room_type', 'host_type'] -> 'category'.
+  5. Variable objetivo: precio_alto = 1 si realSum > mediana de ENTRENAMIENTO (€262.94); si no, 0. La mediana no usa datos de prueba. realSum se excluye de las predictoras.
+     Balance en entrenamiento: 49.9% alto | prueba: 52.8% alto.
+  6. Dentro del Pipeline (ajustado SOLO con entrenamiento): OneHotEncoder para room_type y host_type.
+     Sin escalado: Random Forest divide por umbrales, no usa distancias. En la comparación sí se escalaron KNN, SVM, regresión logística y Naive Bayes.
+  División: 3765 entrenamiento / 1614 prueba (test_size=0.3, random_state=42).
+
+==============================================================================
+4. MODELO
+==============================================================================
+Tipo de aprendizaje: SUPERVISADO (clasificación binaria): se conoce el precio de cada anuncio y se predice su gama.
+Algoritmo: Random Forest (sklearn RandomForestClassifier).
+Variable objetivo: precio_alto (0 = estándar, 1 = alto)
+Variables predictoras: person_capacity (capacidad (personas)), bedrooms (habitaciones), cleanliness_rating (calificación de limpieza (0-10)), guest_satisfaction_overall (satisfacción de huéspedes (0-100)), dist (distancia al centro (km)), metro_dist (distancia al metro (km)), attr_index (índice de atracciones cercanas), rest_index (índice de restaurantes cercanos), host_is_superhost (anfitrión superhost), room_type (tipo de alojamiento), host_type (tipo de anfitrión)
+Comparación de algoritmos (validación cruzada estratificada de 5 pliegues sobre entrenamiento):
+                        algoritmo escalado  exactitud_cv  f1_cv  auc_cv
+                    Random Forest       no        0.8733 0.8696  0.9368
+              Regresión logística       sí        0.8592 0.8537  0.9270
+                 SVM (kernel RBF)       sí        0.8622 0.8560  0.9245
+                       KNN (k=15)       sí        0.8637 0.8613  0.9207
+            Naive Bayes gaussiano       sí        0.8175 0.8331  0.9116
+      Árbol de decisión (prof. 6)       no        0.8529 0.8468  0.9085
+Búsqueda de hiperparámetros: GridSearchCV, criterio roc_auc, rejilla {'n_estimators': [100, 300], 'max_depth': [4, 8, 12, None], 'min_samples_leaf': [1, 5, 10], 'max_features': ['sqrt', 0.5]}
+    Mejor combinación: {'max_depth': 12, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'n_estimators': 300} -> AUC CV = 0.9383
+    10 mejores combinaciones:
+      n_estimators max_depth min_samples_leaf max_features  score_cv  score_cv_std
+               300        12                1         sqrt    0.9383        0.0057
+               100        12                1         sqrt    0.9380        0.0056
+               300         8                1         sqrt    0.9376        0.0065
+               100         8                1         sqrt    0.9375        0.0060
+               300         8                1          0.5    0.9372        0.0056
+               300        12                5         sqrt    0.9370        0.0063
+               300         8                5         sqrt    0.9368        0.0069
+               300      None                5         sqrt    0.9367        0.0065
+               300      None                1         sqrt    0.9366        0.0059
+               100         8                1          0.5    0.9365        0.0059
+Parámetros finales del bosque (los no listados en la rejilla son predeterminados): {'bootstrap': True, 'class_weight': None, 'criterion': 'gini', 'max_depth': 12, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'n_estimators': 300, 'random_state': 42}
+
+==============================================================================
+5. MÉTRICAS EN PRUEBA
+==============================================================================
+    Exactitud = 0.8748  (referencia: adivinar la clase mayoritaria = 0.5279)
+    Precisión (alto) = 0.9124
+    Recall (alto)    = 0.8439
+    F1 (alto)        = 0.8768
+    AUC ROC          = 0.9460
+    Matriz de confusión (filas = real, columnas = predicción):
+                     pred_estándar  pred_alto
+      real_estándar            693         69
+      real_alto                133        719
+    Reporte por clase:
+                    precision    recall  f1-score   support
+      
+          estándar      0.839     0.909     0.873       762
+              alto      0.912     0.844     0.877       852
+      
+          accuracy                          0.875      1614
+         macro avg      0.876     0.877     0.875      1614
+      weighted avg      0.878     0.875     0.875      1614
+
+==============================================================================
+6. INTERPRETACIÓN DEL MODELO
+==============================================================================
+Importancia por permutación en prueba (caída del AUC, 20 repeticiones):
+    room_type                    0.2323 ± 0.0072
+    rest_index                   0.0305 ± 0.0026
+    person_capacity              0.0220 ± 0.0020
+    bedrooms                     0.0099 ± 0.0016
+    attr_index                   0.0084 ± 0.0012
+    metro_dist                   0.0077 ± 0.0011
+    cleanliness_rating           0.0057 ± 0.0008
+    dist                         0.0045 ± 0.0014
+    host_type                    0.0043 ± 0.0009
+    guest_satisfaction_overall   0.0035 ± 0.0011
+    host_is_superhost            0.0014 ± 0.0005
+Dependencia parcial (P(precio alto) en el rango 2-98 % de cada variable):
+    índice de restaurantes cercanos: 0.40 con 198.19 -> 0.62 con 1843.37
+    capacidad (personas): 0.46 con 2.00 -> 0.65 con 6.00
+    habitaciones: 0.52 con 0.00 -> 0.61 con 4.00
+    índice de atracciones cercanas: 0.48 con 97.01 -> 0.54 con 834.67
+Efecto de las categorías (P(precio alto) promedio si todos los anuncios tuvieran esa categoría):
+    tipo de alojamiento: Entire home/apt 82%, Private room 29%, Shared room 28%
+    tipo de anfitrión: empresa (>4 anuncios) 51%, particular (1 anuncio) 51%, multi (2-4 anuncios) 51%
+
+==============================================================================
+7. GRÁFICAS GENERADAS
+==============================================================================
+    output/figuras/01_distribucion_precios.png
+    output/figuras/02_comparacion_algoritmos.png
+    output/figuras/03_busqueda_hiperparametros.png
+    output/figuras/04_matriz_confusion_roc.png
+    output/figuras/05_importancia_variables.png
+    output/figuras/06_dependencia_parcial.png
+    output/figuras/07_efecto_categorias.png
+
+==============================================================================
