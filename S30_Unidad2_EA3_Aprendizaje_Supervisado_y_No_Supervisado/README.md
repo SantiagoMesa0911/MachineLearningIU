@@ -241,4 +241,4 @@ modifique esta carpeta o el propio workflow. También se puede lanzar manualment
 | Resumen automático | `output/resumen_ejecucion.txt` · artefacto `resumen-ea3` en Actions |
 | Documento de hallazgos | [`HALLAZGOS.md`](HALLAZGOS.md) |
 | Explicación del código | [`EXPLICACION_CODIGO.md`](EXPLICACION_CODIGO.md) |
-| Ejecución exitosa | _Completar: enlace a la ejecución de GitHub Actions_ |
+| Ejecución exitosa | [GitHub Actions – ejecución 42522282274](https://github.com/SantiagoMesa0911/MachineLearningIU/actions/runs/42522282274) |
